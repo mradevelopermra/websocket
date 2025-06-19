@@ -23,6 +23,12 @@ io.on("connection", (socket) => {
     console.log("🎮 Jugada recibida:", data);
     socket.broadcast.emit("jugada", data); // Reenvía a los demás
   });
+    
+    socket.on("ballMove", (data) => {
+      console.log("⚽ Movimiento de balón:", data);
+      socket.broadcast.emit("ballMove", data);
+    });
+
 
   socket.on("disconnect", () => {
     console.log("❌ Usuario desconectado:", socket.id);
