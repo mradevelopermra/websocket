@@ -11,6 +11,11 @@ const io = socketIO(server, {
   }
 });
 
+// ✅ Respuesta para verificar el estado desde el navegador
+app.get("/", (req, res) => {
+  res.send("✅ Servidor WebSocket activo");
+});
+
 // Almacenar las mesas disponibles por ID de jugador
 const mesasDisponibles = {};
 
@@ -56,8 +61,8 @@ io.on("connection", (socket) => {
         console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
 
         // Avisar a ambos jugadores que el juego está listo
-        socket.emit("juegoListo", { rivalID: duenoMesa });
-        socketDueno.emit("juegoListo", { rivalID: jugadorID });
+        socket.emit("juegoListo", { rival: duenoMesa });
+        socketDueno.emit("juegoListo", { rival: jugadorID });
 
         // ❌ Remover la mesa (ya no está disponible)
         delete mesasDisponibles[duenoMesa];
@@ -85,4 +90,3 @@ io.on("connection", (socket) => {
 server.listen(3000, () => {
   console.log("🚀 Servidor WebSocket corriendo en puerto 3000");
 });
-
