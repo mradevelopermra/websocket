@@ -4,6 +4,7 @@ const socketIO = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
+
 const io = socketIO(server, {
   cors: {
     origin: "*"
@@ -13,9 +14,14 @@ const io = socketIO(server, {
 io.on("connection", (socket) => {
   console.log("✅ Usuario conectado:", socket.id);
 
+  // 🔎 Log de cualquier evento recibido (útil para debugging)
+  socket.onAny((event, ...args) => {
+    console.log(`📡 Evento recibido: ${event}`, args);
+  });
+
   socket.on("jugada", (data) => {
     console.log("🎮 Jugada recibida:", data);
-    socket.broadcast.emit("jugada", data);
+    socket.broadcast.emit("jugada", data); // Reenvía a los demás
   });
 
   socket.on("disconnect", () => {
@@ -24,6 +30,5 @@ io.on("connection", (socket) => {
 });
 
 server.listen(3000, () => {
-  console.log("Servidor WebSocket corriendo en puerto 3000");
+  console.log("🚀 Servidor WebSocket corriendo en puerto 3000");
 });
-
