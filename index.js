@@ -24,6 +24,13 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("jugada", data); // Reenvía a los demás
   });
     
+    socket.on('crearMesa', (data) => {
+        const jugadorID = data.jugadorID;
+        console.log(`🧩 Mesa creada por ${jugadorID}`);
+        mesasDisponibles[jugadorID] = socket.id; // ejemplo de estructura
+    });
+
+    
     socket.on("ballMove", (data) => {
       console.log("⚽ Movimiento de balón:", data);
       socket.broadcast.emit("ballMove", data);
