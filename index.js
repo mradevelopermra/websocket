@@ -11,23 +11,23 @@ const io = socketIO(server, {
   }
 });
 
-// ✅ Respuesta para verificar el estado desde el navegador
+// ✅ Estado visible desde navegador
 app.get("/", (req, res) => {
   res.send("✅ Servidor WebSocket activo");
 });
 
-// Almacenar las mesas disponibles por ID de jugador
+// 🗂️ Almacenar todas las mesas disponibles con datos
 const mesasDisponibles = {};
 
 io.on("connection", (socket) => {
   console.log("✅ Usuario conectado:", socket.id);
 
-  // 🔎 Debug global de eventos
+  // 🔍 Escuchar todos los eventos
   socket.onAny((event, ...args) => {
     console.log(`📡 Evento recibido: ${event}`, args);
   });
 
-  // 🎮 Jugada general
+  // 🎮 Jugada enviada
   socket.on("jugada", (data) => {
     console.log("🎮 Jugada recibida:", data);
     socket.broadcast.emit("jugada", data);
@@ -35,11 +35,11 @@ io.on("connection", (socket) => {
 
   // ⚽ Movimiento del balón
   socket.on("ballMove", (data) => {
-    console.log("⚽ Movimiento de balón:", data);
+    console.log("⚽ Movimiento del balón:", data);
     socket.broadcast.emit("ballMove", data);
   });
 
-  // 🧩 Crear mesa con más datos
+  // 🧩 Crear mesa
   socket.on("crearMesa", (data) => {
     const {
       jugadorID,
@@ -50,42 +50,64 @@ io.on("connection", (socket) => {
       grupo
     } = data;
 
-    // Guardar solo ID de socket para unirse
-    mesasDisponibles[jugadorID] = socket.id;
+    if (!jugadorID || !nombre || !avatarURL || !equipoReal || !equipoVisualRival || !grupo) {
+      console.log("⚠️ Datos incompletos para crear mesa:", data);
+      return;
+    }
 
-    // Mostrar todos los datos recibidos
+    // Guardar mesa con todos los datos
+    mesasDisponibles[jugadorID] = {
+      socketId: socket.id,
+      nombre,
+      avatarURL,
+      equipoReal,
+      equipoVisualRival,
+      grupo
+    };
+
     console.log("🧩 Mesa creada:");
     console.log("👤 ID:", jugadorID);
     console.log("📛 Nombre:", nombre);
     console.log("🖼️ Avatar URL:", avatarURL);
     console.log("🇲🇽 Equipo Real:", equipoReal);
-    console.log("🏴 Equipo Rival:", equipoVisualRival);
+    console.log("🏴 Equipo Visual Rival:", equipoVisualRival);
     console.log("🧵 Grupo:", grupo);
 
-    // Avisar a todos que hay una nueva mesa disponible
+    // Avisar a otros clientes
     socket.broadcast.emit("mesaDisponible", { duenoMesa: jugadorID });
   });
 
   // 🔗 Unirse a una mesa
   socket.on("unirseAMesa", (data) => {
     const { jugadorID, duenoMesa } = data;
-    const socketIdDueno = mesasDisponibles[duenoMesa];
+    const mesa = mesasDisponibles[duenoMesa];
 
-    if (socketIdDueno) {
-      const socketDueno = io.sockets.sockets.get(socketIdDueno);
-
-      if (socketDueno) {
-        console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
-
-        // Avisar a ambos que el juego puede comenzar
-        socket.emit("juegoListo", { rival: duenoMesa });
-        socketDueno.emit("juegoListo", { rival: jugadorID });
-
-        // Eliminar mesa
-        delete mesasDisponibles[duenoMesa];
-      }
-    } else {
+    if (!mesa) {
       console.log(`❗ Mesa no encontrada para ${duenoMesa}`);
+      return;
+    }
+
+    const socketIdDueno = mesa.socketId;
+    const socketDueno = io.sockets.sockets.get(socketIdDueno);
+
+    if (socketDueno) {
+      console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
+
+      // Avisar a ambos jugadores con la info relevante
+      socket.emit("juegoListo", {
+        rival: duenoMesa,
+        nombre: mesa.nombre,
+        avatarURL: mesa.avatarURL,
+        equipo: mesa.equipoReal,
+        grupo: mesa.grupo
+      });
+
+      socketDueno.emit("juegoListo", {
+        rival: jugadorID
+      });
+
+      // ❌ Mesa ya no está disponible
+      delete mesasDisponibles[duenoMesa];
     }
   });
 
@@ -93,9 +115,8 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("❌ Usuario desconectado:", socket.id);
 
-    // Limpiar mesas
-    for (const [jugadorID, id] of Object.entries(mesasDisponibles)) {
-      if (id === socket.id) {
+    for (const [jugadorID, mesa] of Object.entries(mesasDisponibles)) {
+      if (mesa.socketId === socket.id) {
         delete mesasDisponibles[jugadorID];
         console.log(`🗑️ Mesa eliminada de ${jugadorID}`);
         break;
@@ -107,4 +128,3 @@ io.on("connection", (socket) => {
 server.listen(3000, () => {
   console.log("🚀 Servidor WebSocket corriendo en puerto 3000");
 });
-
