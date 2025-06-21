@@ -39,13 +39,30 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("ballMove", data);
   });
 
-  // 🧩 Crear mesa
+  // 🧩 Crear mesa con más datos
   socket.on("crearMesa", (data) => {
-    const jugadorID = data.jugadorID;
-    mesasDisponibles[jugadorID] = socket.id;
-    console.log(`🧩 Mesa creada por ${jugadorID}`);
+    const {
+      jugadorID,
+      nombre,
+      avatarURL,
+      equipoReal,
+      equipoVisualRival,
+      grupo
+    } = data;
 
-    // 🔔 Avisar a otros que hay una mesa disponible
+    // Guardar solo ID de socket para unirse
+    mesasDisponibles[jugadorID] = socket.id;
+
+    // Mostrar todos los datos recibidos
+    console.log("🧩 Mesa creada:");
+    console.log("👤 ID:", jugadorID);
+    console.log("📛 Nombre:", nombre);
+    console.log("🖼️ Avatar URL:", avatarURL);
+    console.log("🇲🇽 Equipo Real:", equipoReal);
+    console.log("🏴 Equipo Rival:", equipoVisualRival);
+    console.log("🧵 Grupo:", grupo);
+
+    // Avisar a todos que hay una nueva mesa disponible
     socket.broadcast.emit("mesaDisponible", { duenoMesa: jugadorID });
   });
 
@@ -60,11 +77,11 @@ io.on("connection", (socket) => {
       if (socketDueno) {
         console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
 
-        // Avisar a ambos jugadores que el juego está listo
+        // Avisar a ambos que el juego puede comenzar
         socket.emit("juegoListo", { rival: duenoMesa });
         socketDueno.emit("juegoListo", { rival: jugadorID });
 
-        // ❌ Remover la mesa (ya no está disponible)
+        // Eliminar mesa
         delete mesasDisponibles[duenoMesa];
       }
     } else {
@@ -76,7 +93,7 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("❌ Usuario desconectado:", socket.id);
 
-    // 🧹 Limpiar mesas si el creador se desconecta
+    // Limpiar mesas
     for (const [jugadorID, id] of Object.entries(mesasDisponibles)) {
       if (id === socket.id) {
         delete mesasDisponibles[jugadorID];
@@ -90,3 +107,4 @@ io.on("connection", (socket) => {
 server.listen(3000, () => {
   console.log("🚀 Servidor WebSocket corriendo en puerto 3000");
 });
+
