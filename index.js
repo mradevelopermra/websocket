@@ -110,6 +110,17 @@ io.on("connection", (socket) => {
       delete mesasDisponibles[duenoMesa];
     }
   });
+    
+    socket.on("evento", (data) => {
+      if (!data || typeof data !== "object") {
+        console.log("⚠️ Evento inválido:", data);
+        return;
+      }
+
+      console.log("🎯 Evento personalizado recibido:", data);
+      socket.broadcast.emit("evento", data);
+    });
+
 
   // ❌ Desconexión
   socket.on("disconnect", () => {
