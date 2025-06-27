@@ -22,7 +22,7 @@ const mesasDisponibles = {};
 io.on("connection", (socket) => {
   console.log("✅ Usuario conectado:", socket.id);
 
-  // 🔍 Escuchar todos los eventos
+  // 🔍 Escuchar todos los eventos para depuración
   socket.onAny((event, ...args) => {
     console.log(`📡 Evento recibido: ${event}`, args);
   });
@@ -33,10 +33,16 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("jugada", data);
   });
 
-  // ⚽ Movimiento del balón
+  // ⚽ Movimiento del balón (posición continua)
   socket.on("ballMove", (data) => {
     console.log("⚽ Movimiento del balón:", data);
     socket.broadcast.emit("ballMove", data);
+  });
+
+  // 💥 Impulso del balón (patada)
+  socket.on("patearBalon", (data) => {
+    console.log("💥 Evento patearBalon recibido:", data);
+    socket.broadcast.emit("patearBalon", data);
   });
 
   // 🧩 Crear mesa
@@ -55,7 +61,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Guardar mesa con todos los datos
     mesasDisponibles[jugadorID] = {
       socketId: socket.id,
       nombre,
@@ -73,7 +78,6 @@ io.on("connection", (socket) => {
     console.log("🏴 Equipo Visual Rival:", equipoVisualRival);
     console.log("🧵 Grupo:", grupo);
 
-    // Avisar a otros clientes
     socket.broadcast.emit("mesaDisponible", { duenoMesa: jugadorID });
   });
 
@@ -93,7 +97,7 @@ io.on("connection", (socket) => {
     if (socketDueno) {
       console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
 
-      // Avisar a ambos jugadores con la info relevante
+      // Enviar datos a ambos jugadores
       socket.emit("juegoListo", {
         rival: duenoMesa,
         nombre: mesa.nombre,
@@ -106,21 +110,21 @@ io.on("connection", (socket) => {
         rival: jugadorID
       });
 
-      // ❌ Mesa ya no está disponible
+      // Eliminar la mesa después de que se une el rival
       delete mesasDisponibles[duenoMesa];
     }
   });
-    
-    socket.on("evento", (data) => {
-      if (!data || typeof data !== "object") {
-        console.log("⚠️ Evento inválido:", data);
-        return;
-      }
 
-      console.log("🎯 Evento personalizado recibido:", data);
-      socket.broadcast.emit("evento", data);
-    });
+  // 🎯 Evento personalizado genérico (si se requiere)
+  socket.on("evento", (data) => {
+    if (!data || typeof data !== "object") {
+      console.log("⚠️ Evento inválido:", data);
+      return;
+    }
 
+    console.log("🎯 Evento personalizado recibido:", data);
+    socket.broadcast.emit("evento", data);
+  });
 
   // ❌ Desconexión
   socket.on("disconnect", () => {
@@ -135,17 +139,6 @@ io.on("connection", (socket) => {
     }
   });
 });
-
-socket.on("patearBalon", (data) => {
-    const mesaID = jugadoresEnMesa[socket.id];
-    if (!mesaID || !mesas[mesaID]) return;
-
-    const oponenteID = mesas[mesaID].find(id => id !== socket.id);
-    if (!oponenteID) return;
-
-    io.to(oponenteID).emit("patearBalon", data);
-});
-
 
 server.listen(3000, () => {
   console.log("🚀 Servidor WebSocket corriendo en puerto 3000");
