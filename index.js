@@ -136,6 +136,17 @@ io.on("connection", (socket) => {
   });
 });
 
+socket.on("patearBalon", (data) => {
+    const mesaID = jugadoresEnMesa[socket.id];
+    if (!mesaID || !mesas[mesaID]) return;
+
+    const oponenteID = mesas[mesaID].find(id => id !== socket.id);
+    if (!oponenteID) return;
+
+    io.to(oponenteID).emit("patearBalon", data);
+});
+
+
 server.listen(3000, () => {
   console.log("🚀 Servidor WebSocket corriendo en puerto 3000");
 });
