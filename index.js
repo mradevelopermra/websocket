@@ -12,13 +12,10 @@ const io = socketIO(server, {
   }
 });
 
+// Healthcheck HTTP para Railway
 app.get("/", (req, res) => {
-  res.send("✅ Servidor WebSocket activo");
+  res.status(200).send("✅ Servidor WebSocket activo");
 });
-
-// =========================
-// Estado del servidor
-// =========================
 
 // Mesas esperando rival
 const mesasDisponibles = {};
@@ -28,10 +25,6 @@ const partidas = {};
 
 // socket.id -> metadata
 const socketMeta = new Map();
-
-// =========================
-// Helpers
-// =========================
 
 function norm(value) {
   return String(value || "").trim().toLowerCase();
@@ -59,11 +52,6 @@ function removeSocketMeta(socketId) {
   socketMeta.delete(socketId);
 }
 
-function getMatchById(matchId) {
-  if (!matchId) return null;
-  return partidas[matchId] || null;
-}
-
 function findMatchBySocketId(socketId) {
   const meta = getSocketMeta(socketId);
   if (!meta?.matchId) return null;
@@ -89,8 +77,6 @@ function isPlayerInMatch(match, jugadorID) {
 }
 
 function expectedShooterForTurn(match, turnId) {
-  // Turnos impares: owner
-  // Turnos pares: guest
   return turnId % 2 === 1 ? match.ownerId : match.guestId;
 }
 
@@ -142,10 +128,6 @@ function validatePayloadObject(data, label) {
   return true;
 }
 
-// =========================
-// Conexión principal
-// =========================
-
 io.on("connection", (socket) => {
   console.log("✅ Usuario conectado:", socket.id);
 
@@ -159,9 +141,7 @@ io.on("connection", (socket) => {
     console.log(`📡 Evento recibido socket=${socket.id} event=${event}`, args);
   });
 
-  // =========================
   // Crear mesa
-  // =========================
   socket.on("crearMesa", (data) => {
     if (!validatePayloadObject(data, "crearMesa")) return;
 
@@ -174,7 +154,6 @@ io.on("connection", (socket) => {
       grupo
     } = data;
 
-    // avatarURL puede venir vacío, así que sólo validamos null/undefined
     if (
       !jugadorID ||
       !nombre ||
@@ -215,9 +194,7 @@ io.on("connection", (socket) => {
     socket.broadcast.emit("mesaDisponible", { duenoMesa: jugadorID });
   });
 
-  // =========================
   // Unirse a una mesa
-  // =========================
   socket.on("unirseAMesa", (data) => {
     if (!validatePayloadObject(data, "unirseAMesa")) return;
 
@@ -246,26 +223,20 @@ io.on("connection", (socket) => {
 
     const match = {
       matchId,
-
       ownerId: mesa.jugadorID,
       ownerSocketId: mesa.socketId,
       ownerNombre: mesa.nombre,
       ownerAvatarURL: mesa.avatarURL,
-
       guestId: jugadorID,
       guestSocketId: socket.id,
       guestNombre: nombre || "",
       guestAvatarURL: avatarURL || "",
-
       turnId: 1,
       shooterId: mesa.jugadorID,
-
-      // Para bloquear duplicados/conflictos de syncTurno
       lastAppliedSyncTurn: {
         turnId: 1,
         shooterId: norm(mesa.jugadorID)
       },
-
       createdAt: Date.now()
     };
 
@@ -287,7 +258,6 @@ io.on("connection", (socket) => {
     console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
     logMatchState("✅ Partida creada", match);
 
-    // Invitado
     socket.emit("juegoListo", {
       rival: mesa.jugadorID,
       nombre: mesa.nombre,
@@ -300,7 +270,6 @@ io.on("connection", (socket) => {
       shooterID: mesa.jugadorID
     });
 
-    // Dueño
     socketDueno.emit("juegoListo", {
       rival: jugadorID,
       nombre: nombre || "",
@@ -311,7 +280,6 @@ io.on("connection", (socket) => {
       shooterID: mesa.jugadorID
     });
 
-    // Bootstrap autoritativo del turno 1
     safeEmitToMatch(matchId, "evento", {
       tipo: "syncTurno",
       jugadorID: mesa.jugadorID,
@@ -325,24 +293,15 @@ io.on("connection", (socket) => {
     delete mesasDisponibles[duenoMesa];
   });
 
-  // =========================
   // Jugada
-  // =========================
   socket.on("jugada", (data) => {
     if (!validatePayloadObject(data, "jugada")) return;
 
     const match = findMatchBySocketId(socket.id);
-    if (!match) {
-      console.log("⚠️ jugada recibida fuera de partida activa:", data);
+    if (!match || !isSocketInMatch(match, socket.id)) {
+      console.log("⚠️ jugada fuera de partida activa:", data);
       return;
     }
-
-    if (!isSocketInMatch(match, socket.id)) {
-      console.log("⛔ jugada rechazada: socket fuera de la partida", data);
-      return;
-    }
-
-    console.log(`🎮 Jugada recibida match=${match.matchId}`, data);
 
     socket.to(match.matchId).emit("jugada", {
       ...data,
@@ -350,20 +309,13 @@ io.on("connection", (socket) => {
     });
   });
 
-  // =========================
   // Movimiento del balón
-  // =========================
   socket.on("ballMove", (data) => {
     if (!validatePayloadObject(data, "ballMove")) return;
 
     const match = findMatchBySocketId(socket.id);
-    if (!match) {
-      console.log("⚠️ ballMove recibido fuera de partida activa:", data);
-      return;
-    }
-
-    if (!isSocketInMatch(match, socket.id)) {
-      console.log("⛔ ballMove rechazado: socket fuera de la partida", data);
+    if (!match || !isSocketInMatch(match, socket.id)) {
+      console.log("⚠️ ballMove fuera de partida activa:", data);
       return;
     }
 
@@ -373,20 +325,13 @@ io.on("connection", (socket) => {
     });
   });
 
-  // =========================
   // Impulso del balón
-  // =========================
   socket.on("patearBalon", (data) => {
     if (!validatePayloadObject(data, "patearBalon")) return;
 
     const match = findMatchBySocketId(socket.id);
-    if (!match) {
-      console.log("⚠️ patearBalon recibido fuera de partida activa:", data);
-      return;
-    }
-
-    if (!isSocketInMatch(match, socket.id)) {
-      console.log("⛔ patearBalon rechazado: socket fuera de la partida", data);
+    if (!match || !isSocketInMatch(match, socket.id)) {
+      console.log("⚠️ patearBalon fuera de partida activa:", data);
       return;
     }
 
@@ -396,20 +341,13 @@ io.on("connection", (socket) => {
     });
   });
 
-  // =========================
   // Evento genérico
-  // =========================
   socket.on("evento", (data) => {
     if (!validatePayloadObject(data, "evento")) return;
 
     const match = findMatchBySocketId(socket.id);
-    if (!match) {
-      console.log("⚠️ evento recibido fuera de partida activa:", data);
-      return;
-    }
-
-    if (!isSocketInMatch(match, socket.id)) {
-      console.log("⛔ evento rechazado: socket fuera de la partida", data);
+    if (!match || !isSocketInMatch(match, socket.id)) {
+      console.log("⚠️ evento fuera de partida activa:", data);
       return;
     }
 
@@ -418,9 +356,6 @@ io.on("connection", (socket) => {
     const senderJugadorID = senderMeta?.jugadorID || "";
     console.log(`🎯 Evento recibido match=${match.matchId} tipo=${tipo}`, data);
 
-    // =========================
-    // VALIDACIÓN AUTORITATIVA DE syncTurno
-    // =========================
     if (tipo === "syncTurno") {
       const requestedTurnId = Number(data.turnId ?? data.turno ?? 0);
       const requestedShooter = norm(data.shooterID);
@@ -436,7 +371,6 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Repetido exacto
       if (
         match.lastAppliedSyncTurn &&
         match.lastAppliedSyncTurn.turnId === requestedTurnId &&
@@ -446,7 +380,6 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Conflicto grave: mismo turno, distinto shooter
       if (
         match.lastAppliedSyncTurn &&
         match.lastAppliedSyncTurn.turnId === requestedTurnId &&
@@ -458,30 +391,21 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Debe avanzar exactamente al siguiente turno
       const expectedNextTurn = match.turnId + 1;
       if (requestedTurnId !== expectedNextTurn) {
-        console.log(
-          `⛔ syncTurno rechazado: turnId inválido requested=${requestedTurnId} expected=${expectedNextTurn}`
-        );
+        console.log(`⛔ syncTurno rechazado: turnId inválido requested=${requestedTurnId} expected=${expectedNextTurn}`);
         return;
       }
 
-      // El shooter esperado lo decide el servidor
       const expectedShooter = norm(expectedShooterForTurn(match, requestedTurnId));
       if (requestedShooter !== expectedShooter) {
-        console.log(
-          `⛔ syncTurno rechazado: shooter inválido requested=${requestedShooter} expected=${expectedShooter}`
-        );
+        console.log(`⛔ syncTurno rechazado: shooter inválido requested=${requestedShooter} expected=${expectedShooter}`);
         return;
       }
 
-      // Opcional: sólo el tirador actual puede pedir el siguiente turno
       const currentShooter = norm(match.shooterId);
       if (senderIdNorm !== currentShooter) {
-        console.log(
-          `⛔ syncTurno rechazado: sólo el tirador actual puede cerrar turno sender=${senderIdNorm} currentShooter=${currentShooter}`
-        );
+        console.log(`⛔ syncTurno rechazado: sólo el tirador actual puede cerrar turno sender=${senderIdNorm} currentShooter=${currentShooter}`);
         return;
       }
 
@@ -502,18 +426,13 @@ io.on("connection", (socket) => {
         matchId: match.matchId
       };
 
-      console.log(
-        `✅ syncTurno aceptado match=${match.matchId} turn=${requestedTurnId} shooter=${expectedShooter}`
-      );
+      console.log(`✅ syncTurno aceptado match=${match.matchId} turn=${requestedTurnId} shooter=${expectedShooter}`);
       logMatchState("📘 Estado match actualizado", match);
 
       safeEmitToMatch(match.matchId, "evento", payload);
       return;
     }
 
-    // =========================
-    // cerrarMesa
-    // =========================
     if (tipo === "cerrarMesa") {
       console.log(`🛑 cerrarMesa recibido match=${match.matchId} por ${senderJugadorID}`);
 
@@ -529,20 +448,16 @@ io.on("connection", (socket) => {
       return;
     }
 
-    // Resto de eventos: sólo al rival
     socket.to(match.matchId).emit("evento", {
       ...data,
       matchId: match.matchId
     });
   });
 
-  // =========================
   // Desconexión
-  // =========================
   socket.on("disconnect", () => {
     console.log("❌ Usuario desconectado:", socket.id);
 
-    // Limpiar mesas pendientes
     for (const [jugadorID, mesa] of Object.entries(mesasDisponibles)) {
       if (mesa.socketId === socket.id) {
         delete mesasDisponibles[jugadorID];
@@ -551,7 +466,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    // Limpiar partida activa
     const meta = getSocketMeta(socket.id);
     if (meta?.matchId && partidas[meta.matchId]) {
       const match = partidas[meta.matchId];
@@ -572,6 +486,6 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Servidor WebSocket corriendo en puerto ${PORT}`);
 });
