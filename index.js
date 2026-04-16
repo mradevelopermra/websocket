@@ -16,14 +16,13 @@ app.get("/", (req, res) => {
   res.send("✅ Servidor WebSocket activo");
 });
 
-// 🗂️ Mesas disponibles
+// 🗂️ Almacenar todas las mesas disponibles con datos
 const mesasDisponibles = {};
 
-// 🎮 Partidas activas
-// matchId -> { ownerId, guestId, ownerSocketId, guestSocketId, turnId, shooterID, lastSyncTurn }
+// 🆕 Partidas activas
 const partidas = {};
 
-// socket.id -> matchId
+// 🆕 socket.id -> matchId
 const socketToMatch = {};
 
 // Helpers
@@ -72,13 +71,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    io.to(opponentSocketId).emit("jugada", {
-      ...data,
-      matchId: match.matchId
-    });
+    io.to(opponentSocketId).emit("jugada", data);
   });
 
-  // ⚽ Movimiento del balón
+  // ⚽ Movimiento del balón (posición continua)
   socket.on("ballMove", (data) => {
     console.log("⚽ Movimiento del balón:", data);
 
@@ -94,13 +90,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    io.to(opponentSocketId).emit("ballMove", {
-      ...data,
-      matchId: match.matchId
-    });
+    io.to(opponentSocketId).emit("ballMove", data);
   });
 
-  // 💥 Impulso del balón
+  // 💥 Impulso del balón (patada)
   socket.on("patearBalon", (data) => {
     console.log("💥 Evento patearBalon recibido:", data);
 
@@ -116,10 +109,7 @@ io.on("connection", (socket) => {
       return;
     }
 
-    io.to(opponentSocketId).emit("patearBalon", {
-      ...data,
-      matchId: match.matchId
-    });
+    io.to(opponentSocketId).emit("patearBalon", data);
   });
 
   // 🧩 Crear mesa
@@ -161,8 +151,8 @@ io.on("connection", (socket) => {
     console.log("👤 ID:", jugadorID);
     console.log("📛 Nombre:", nombre);
     console.log("🖼️ Avatar URL:", avatarURL);
-    console.log("⚽ Equipo Real:", equipoReal);
-    console.log("🏳️ Equipo Visual Rival:", equipoVisualRival);
+    console.log("🇲🇽 Equipo Real:", equipoReal);
+    console.log("🏴 Equipo Visual Rival:", equipoVisualRival);
     console.log("🧵 Grupo:", grupo);
 
     socket.broadcast.emit("mesaDisponible", { duenoMesa: jugadorID });
@@ -170,7 +160,7 @@ io.on("connection", (socket) => {
 
   // 🔗 Unirse a una mesa
   socket.on("unirseAMesa", (data) => {
-    const { jugadorID, duenoMesa, nombre, avatarURL } = data;
+    const { jugadorID, duenoMesa } = data;
     const mesa = mesasDisponibles[duenoMesa];
 
     if (!mesa) {
@@ -178,85 +168,69 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const socketDueno = io.sockets.sockets.get(mesa.socketId);
+    const socketIdDueno = mesa.socketId;
+    const socketDueno = io.sockets.sockets.get(socketIdDueno);
 
-    if (!socketDueno) {
-      console.log(`❗ Socket del dueño no encontrado para ${duenoMesa}`);
-      delete mesasDisponibles[duenoMesa];
-      return;
-    }
+    if (socketDueno) {
+      console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
 
-    const matchId = makeMatchId(duenoMesa, jugadorID);
+      const matchId = makeMatchId(duenoMesa, jugadorID);
 
-    partidas[matchId] = {
-      matchId,
-      ownerId: duenoMesa,
-      guestId: jugadorID,
-      ownerSocketId: mesa.socketId,
-      guestSocketId: socket.id,
-      turnId: 1,
-      shooterID: duenoMesa,
-      lastSyncTurn: {
+      partidas[matchId] = {
+        matchId,
+        ownerId: duenoMesa,
+        guestId: jugadorID,
+        ownerSocketId: socketIdDueno,
+        guestSocketId: socket.id,
         turnId: 1,
-        shooterID: norm(duenoMesa)
-      }
-    };
+        shooterID: duenoMesa,
+        lastSyncTurn: {
+          turnId: 1,
+          shooterID: norm(duenoMesa)
+        }
+      };
 
-    socketToMatch[mesa.socketId] = matchId;
-    socketToMatch[socket.id] = matchId;
+      socketToMatch[socketIdDueno] = matchId;
+      socketToMatch[socket.id] = matchId;
 
-    console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
-    console.log("✅ Partida activa:", partidas[matchId]);
+      // Enviar datos a ambos jugadores
+      socket.emit("juegoListo", {
+        rival: duenoMesa,
+        nombre: mesa.nombre,
+        avatarURL: mesa.avatarURL,
+        equipo: mesa.equipoReal,
+        grupo: mesa.grupo
+      });
 
-    // Enviar datos a ambos jugadores
-    socket.emit("juegoListo", {
-      rival: duenoMesa,
-      nombre: mesa.nombre,
-      avatarURL: mesa.avatarURL,
-      equipo: mesa.equipoReal,
-      grupo: mesa.grupo,
-      duenoMesa,
-      matchId,
-      turnId: 1,
-      shooterID: duenoMesa
-    });
+      socketDueno.emit("juegoListo", {
+        rival: jugadorID
+      });
 
-    socketDueno.emit("juegoListo", {
-      rival: jugadorID,
-      nombre: nombre || "",
-      avatarURL: avatarURL || "",
-      duenoMesa,
-      matchId,
-      turnId: 1,
-      shooterID: duenoMesa
-    });
+      // Bootstrap del turno 1 para ambos
+      io.to(socketIdDueno).emit("evento", {
+        tipo: "syncTurno",
+        jugadorID: duenoMesa,
+        duenoMesa,
+        turnId: 1,
+        turno: 1,
+        shooterID: duenoMesa
+      });
 
-    // ✅ Bootstrap del primer turno
-    io.to(mesa.socketId).emit("evento", {
-      tipo: "syncTurno",
-      jugadorID: duenoMesa,
-      duenoMesa,
-      turnId: 1,
-      turno: 1,
-      shooterID: duenoMesa,
-      matchId
-    });
+      io.to(socket.id).emit("evento", {
+        tipo: "syncTurno",
+        jugadorID: duenoMesa,
+        duenoMesa,
+        turnId: 1,
+        turno: 1,
+        shooterID: duenoMesa
+      });
 
-    io.to(socket.id).emit("evento", {
-      tipo: "syncTurno",
-      jugadorID: duenoMesa,
-      duenoMesa,
-      turnId: 1,
-      turno: 1,
-      shooterID: duenoMesa,
-      matchId
-    });
-
-    // Eliminar la mesa después de que se une el rival
-    delete mesasDisponibles[duenoMesa];
+      // Eliminar la mesa después de que se une el rival
+      delete mesasDisponibles[duenoMesa];
+    }
   });
 
-  // 🎯 Evento personalizado genérico
+  // 🎯 Evento personalizado genérico (si se requiere)
   socket.on("evento", (data) => {
     if (!data || typeof data !== "object") {
       console.log("⚠️ Evento inválido:", data);
@@ -269,10 +243,11 @@ io.on("connection", (socket) => {
       return;
     }
 
-    const tipo = data.tipo;
     console.log("🎯 Evento personalizado recibido:", data);
 
-    // ✅ Validación mínima para syncTurno
+    const tipo = data.tipo;
+
+    // ✅ Blindaje mínimo de syncTurno
     if (tipo === "syncTurno") {
       const requestedTurnId = Number(data.turnId ?? data.turno ?? 0);
       const requestedShooter = norm(data.shooterID);
@@ -282,7 +257,7 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // duplicado idéntico
+      // Duplicado idéntico
       if (
         match.lastSyncTurn &&
         match.lastSyncTurn.turnId === requestedTurnId &&
@@ -292,7 +267,7 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // conflicto: mismo turno pero distinto shooter
+      // Conflicto: mismo turno, distinto shooter
       if (
         match.lastSyncTurn &&
         match.lastSyncTurn.turnId === requestedTurnId &&
@@ -304,7 +279,6 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // ✅ aceptamos y actualizamos estado básico
       match.turnId = requestedTurnId;
       match.shooterID = requestedShooter;
       match.lastSyncTurn = {
@@ -321,17 +295,13 @@ io.on("connection", (socket) => {
       return;
     }
 
-    io.to(opponentSocketId).emit("evento", {
-      ...data,
-      matchId: match.matchId
-    });
+    io.to(opponentSocketId).emit("evento", data);
   });
 
   // ❌ Desconexión
   socket.on("disconnect", () => {
     console.log("❌ Usuario desconectado:", socket.id);
 
-    // limpiar mesas pendientes
     for (const [jugadorID, mesa] of Object.entries(mesasDisponibles)) {
       if (mesa.socketId === socket.id) {
         delete mesasDisponibles[jugadorID];
@@ -340,7 +310,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    // limpiar partida activa
     const matchId = socketToMatch[socket.id];
     if (matchId && partidas[matchId]) {
       const match = partidas[matchId];
@@ -362,7 +331,6 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🚀 Servidor WebSocket corriendo en puerto ${PORT}`);
+server.listen(3000, () => {
+  console.log("🚀 Servidor WebSocket corriendo en puerto 3000");
 });
