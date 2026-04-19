@@ -13,7 +13,7 @@ const io = socketIO(server, {
 
 // ✅ Estado visible desde navegador
 app.get("/", (req, res) => {
-  res.send("✅ Servidor WebSocket activo");
+  res.status(200).send("✅ Servidor WebSocket activo");
 });
 
 // 🗂️ Almacenar todas las mesas disponibles con datos
@@ -54,7 +54,7 @@ io.on("connection", (socket) => {
       equipoReal,
       equipoVisualRival,
       grupo
-    } = data;
+    } = data || {};
 
     if (!jugadorID || !nombre || !avatarURL || !equipoReal || !equipoVisualRival || !grupo) {
       console.log("⚠️ Datos incompletos para crear mesa:", data);
@@ -83,7 +83,7 @@ io.on("connection", (socket) => {
 
   // 🔗 Unirse a una mesa
   socket.on("unirseAMesa", (data) => {
-    const { jugadorID, duenoMesa } = data;
+    const { jugadorID, duenoMesa } = data || {};
     const mesa = mesasDisponibles[duenoMesa];
 
     if (!mesa) {
@@ -115,7 +115,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // 🎯 Evento personalizado genérico (si se requiere)
+  // 🎯 Evento personalizado genérico
   socket.on("evento", (data) => {
     if (!data || typeof data !== "object") {
       console.log("⚠️ Evento inválido:", data);
@@ -140,7 +140,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// ✅ usa el puerto que Railway te da
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
