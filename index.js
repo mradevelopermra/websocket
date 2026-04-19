@@ -51,65 +51,66 @@ io.on("connection", (socket) => {
   console.log("✅ Usuario conectado:", socket.id);
 
   // 🔍 Escuchar todos los eventos para depuración
-socket.onAny((event, ...args) => {
-  if (event === "ballMove") return; // evita spam brutal
-  console.log(`📡 Evento recibido: ${event}`);
-});
+  socket.onAny((event, ...args) => {
+    console.log(`📡 Evento recibido: ${event}`, args);
+  });
 
   // 🎮 Jugada enviada
-socket.on("jugada", (data) => {
-  const match = getMatchBySocket(socket.id);
-  if (!match) {
-    console.log("⚠️ jugada recibida fuera de partida activa");
-    return;
-  }
+  socket.on("jugada", (data) => {
+    console.log("🎮 Jugada recibida:", data);
 
-  const opponentSocketId = getOpponentSocketId(match, socket.id);
-  if (!opponentSocketId) {
-    console.log("⚠️ No se encontró rival para reenviar jugada");
-    return;
-  }
+    const match = getMatchBySocket(socket.id);
+    if (!match) {
+      console.log("⚠️ jugada recibida fuera de partida activa");
+      return;
+    }
 
-  console.log(`🎮 jugada tipo=${data?.tipo ?? "?"} turnId=${data?.turnId ?? data?.turno ?? "?"}`);
-  io.to(opponentSocketId).emit("jugada", data);
-});
+    const opponentSocketId = getOpponentSocketId(match, socket.id);
+    if (!opponentSocketId) {
+      console.log("⚠️ No se encontró rival para reenviar jugada");
+      return;
+    }
+
+    io.to(opponentSocketId).emit("jugada", data);
+  });
 
   // ⚽ Movimiento del balón (posición continua)
-socket.on("ballMove", (data) => {
-  const match = getMatchBySocket(socket.id);
-  if (!match) {
-    console.log("⚠️ ballMove recibido fuera de partida activa");
-    return;
-  }
+  socket.on("ballMove", (data) => {
+    console.log("⚽ Movimiento del balón:", data);
 
-  const opponentSocketId = getOpponentSocketId(match, socket.id);
-  if (!opponentSocketId) {
-    console.log("⚠️ No se encontró rival para reenviar ballMove");
-    return;
-  }
+    const match = getMatchBySocket(socket.id);
+    if (!match) {
+      console.log("⚠️ ballMove recibido fuera de partida activa");
+      return;
+    }
 
-  // Log resumido para no saturar Railway
-  console.log(`⚽ ballMove turnId=${data?.turnId ?? "?"}`);
-  io.to(opponentSocketId).emit("ballMove", data);
-});
+    const opponentSocketId = getOpponentSocketId(match, socket.id);
+    if (!opponentSocketId) {
+      console.log("⚠️ No se encontró rival para reenviar ballMove");
+      return;
+    }
+
+    io.to(opponentSocketId).emit("ballMove", data);
+  });
 
   // 💥 Impulso del balón (patada)
-socket.on("patearBalon", (data) => {
-  const match = getMatchBySocket(socket.id);
-  if (!match) {
-    console.log("⚠️ patearBalon recibido fuera de partida activa");
-    return;
-  }
+  socket.on("patearBalon", (data) => {
+    console.log("💥 Evento patearBalon recibido:", data);
 
-  const opponentSocketId = getOpponentSocketId(match, socket.id);
-  if (!opponentSocketId) {
-    console.log("⚠️ No se encontró rival para reenviar patearBalon");
-    return;
-  }
+    const match = getMatchBySocket(socket.id);
+    if (!match) {
+      console.log("⚠️ patearBalon recibido fuera de partida activa");
+      return;
+    }
 
-  console.log(`💥 patearBalon turnId=${data?.turnId ?? data?.turno ?? "?"}`);
-  io.to(opponentSocketId).emit("patearBalon", data);
-});
+    const opponentSocketId = getOpponentSocketId(match, socket.id);
+    if (!opponentSocketId) {
+      console.log("⚠️ No se encontró rival para reenviar patearBalon");
+      return;
+    }
+
+    io.to(opponentSocketId).emit("patearBalon", data);
+  });
 
   // 🧩 Crear mesa
   socket.on("crearMesa", (data) => {
@@ -230,89 +231,72 @@ socket.on("patearBalon", (data) => {
   });
 
   // 🎯 Evento personalizado genérico (si se requiere)
-socket.on("evento", (data) => {
-  if (!data || typeof data !== "object") {
-    console.log("⚠️ Evento inválido:", data);
-    return;
-  }
-
-  const tipo = data.tipo;
-
-  // ✅ permitir pedir mesas sin estar en partida
-  if (tipo === "solicitarMesasDisponibles") {
-    console.log(`📋 solicitarMesasDisponibles de ${data.jugadorID || "?"}`);
-    for (const duenoMesa of Object.keys(mesasDisponibles)) {
-      io.to(socket.id).emit("mesaDisponible", { duenoMesa });
+  socket.on("evento", (data) => {
+    if (!data || typeof data !== "object") {
+      console.log("⚠️ Evento inválido:", data);
+      return;
     }
-    return;
-  }
 
-  const match = getMatchBySocket(socket.id);
-  if (!match) {
-    console.log("⚠️ evento recibido fuera de partida activa:", data);
-    return;
-  }
+    const match = getMatchBySocket(socket.id);
+    if (!match) {
+      console.log("⚠️ evento recibido fuera de partida activa:", data);
+      return;
+    }
 
-  console.log("🎯 Evento personalizado recibido:", {
-    tipo,
-    turnId: data.turnId ?? data.turno ?? null,
-    shooterID: data.shooterID ?? null,
-    jugadorID: data.jugadorID ?? null
+    console.log("🎯 Evento personalizado recibido:", data);
+
+    const tipo = data.tipo;
+
+    // ✅ Blindaje mínimo de syncTurno
+    if (tipo === "syncTurno") {
+      const requestedTurnId = Number(data.turnId ?? data.turno ?? 0);
+      const requestedShooter = norm(data.shooterID);
+
+      if (!requestedTurnId || !requestedShooter) {
+        console.log("⛔ syncTurno inválido: falta turnId o shooterID", data);
+        return;
+      }
+
+      // Duplicado idéntico
+      if (
+        match.lastSyncTurn &&
+        match.lastSyncTurn.turnId === requestedTurnId &&
+        match.lastSyncTurn.shooterID === requestedShooter
+      ) {
+        console.log(`🔁 syncTurno duplicado idéntico ignorado turn=${requestedTurnId} shooter=${requestedShooter}`);
+        return;
+      }
+
+      // Conflicto: mismo turno, distinto shooter
+      if (
+        match.lastSyncTurn &&
+        match.lastSyncTurn.turnId === requestedTurnId &&
+        match.lastSyncTurn.shooterID !== requestedShooter
+      ) {
+        console.log(
+          `🚨 CONFLICTO syncTurno rechazado match=${match.matchId} turn=${requestedTurnId} shooterPrevio=${match.lastSyncTurn.shooterID} shooterNuevo=${requestedShooter}`
+        );
+        return;
+      }
+
+      match.turnId = requestedTurnId;
+      match.shooterID = requestedShooter;
+      match.lastSyncTurn = {
+        turnId: requestedTurnId,
+        shooterID: requestedShooter
+      };
+
+      console.log(`✅ syncTurno aceptado match=${match.matchId} turn=${requestedTurnId} shooter=${requestedShooter}`);
+    }
+
+    const opponentSocketId = getOpponentSocketId(match, socket.id);
+    if (!opponentSocketId) {
+      console.log("⚠️ No se encontró rival para reenviar evento");
+      return;
+    }
+
+    io.to(opponentSocketId).emit("evento", data);
   });
-
-  if (tipo === "syncTurno") {
-    const requestedTurnId = Number(data.turnId ?? data.turno ?? 0);
-    const requestedShooter = norm(data.shooterID);
-
-    if (!requestedTurnId || !requestedShooter) {
-      console.log("⛔ syncTurno inválido: falta turnId o shooterID", data);
-      return;
-    }
-
-    if (
-      match.lastSyncTurn &&
-      match.lastSyncTurn.turnId === requestedTurnId &&
-      match.lastSyncTurn.shooterID === requestedShooter
-    ) {
-      console.log(`🔁 syncTurno duplicado idéntico ignorado turn=${requestedTurnId} shooter=${requestedShooter}`);
-      return;
-    }
-
-    if (
-      match.lastSyncTurn &&
-      match.lastSyncTurn.turnId === requestedTurnId &&
-      match.lastSyncTurn.shooterID !== requestedShooter
-    ) {
-      console.log(
-        `🚨 CONFLICTO syncTurno rechazado match=${match.matchId} turn=${requestedTurnId} shooterPrevio=${match.lastSyncTurn.shooterID} shooterNuevo=${requestedShooter}`
-      );
-      return;
-    }
-
-    match.turnId = requestedTurnId;
-    match.shooterID = requestedShooter;
-    match.lastSyncTurn = {
-      turnId: requestedTurnId,
-      shooterID: requestedShooter
-    };
-
-    console.log(`✅ syncTurno aceptado match=${match.matchId} turn=${requestedTurnId} shooter=${requestedShooter}`);
-  }
-
-  const opponentSocketId = getOpponentSocketId(match, socket.id);
-  if (!opponentSocketId) {
-    console.log("⚠️ No se encontró rival para reenviar evento");
-    return;
-  }
-
-  io.to(opponentSocketId).emit("evento", data);
-});
-
-
-
-
-
-
 
   // ❌ Desconexión
   socket.on("disconnect", () => {
