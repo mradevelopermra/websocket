@@ -13,16 +13,11 @@ const io = socketIO(server, {
 
 // ✅ Estado visible desde navegador
 app.get("/", (req, res) => {
-  res.status(200).send("✅ Servidor WebSocket activo");
+  res.send("✅ Servidor WebSocket activo");
 });
 
 // 🗂️ Almacenar todas las mesas disponibles con datos
 const mesasDisponibles = {};
-
-// helper simple de sala
-function getRoomId(duenoMesa) {
-  return `mesa_${duenoMesa}`;
-}
 
 io.on("connection", (socket) => {
   console.log("✅ Usuario conectado:", socket.id);
@@ -35,40 +30,19 @@ io.on("connection", (socket) => {
   // 🎮 Jugada enviada
   socket.on("jugada", (data) => {
     console.log("🎮 Jugada recibida:", data);
-
-    if (!data || !data.duenoMesa) {
-      console.log("⚠️ jugada sin duenoMesa");
-      return;
-    }
-
-    const roomId = getRoomId(data.duenoMesa);
-    socket.to(roomId).emit("jugada", data);
+    socket.broadcast.emit("jugada", data);
   });
 
-  // ⚽ Movimiento del balón
+  // ⚽ Movimiento del balón (posición continua)
   socket.on("ballMove", (data) => {
     console.log("⚽ Movimiento del balón:", data);
-
-    if (!data || !data.duenoMesa) {
-      console.log("⚠️ ballMove sin duenoMesa");
-      return;
-    }
-
-    const roomId = getRoomId(data.duenoMesa);
-    socket.to(roomId).emit("ballMove", data);
+    socket.broadcast.emit("ballMove", data);
   });
 
-  // 💥 Impulso del balón
+  // 💥 Impulso del balón (patada)
   socket.on("patearBalon", (data) => {
     console.log("💥 Evento patearBalon recibido:", data);
-
-    if (!data || !data.duenoMesa) {
-      console.log("⚠️ patearBalon sin duenoMesa");
-      return;
-    }
-
-    const roomId = getRoomId(data.duenoMesa);
-    socket.to(roomId).emit("patearBalon", data);
+    socket.broadcast.emit("patearBalon", data);
   });
 
   // 🧩 Crear mesa
@@ -80,14 +54,12 @@ io.on("connection", (socket) => {
       equipoReal,
       equipoVisualRival,
       grupo
-    } = data || {};
+    } = data;
 
     if (!jugadorID || !nombre || !avatarURL || !equipoReal || !equipoVisualRival || !grupo) {
       console.log("⚠️ Datos incompletos para crear mesa:", data);
       return;
     }
-
-    const roomId = getRoomId(jugadorID);
 
     mesasDisponibles[jugadorID] = {
       socketId: socket.id,
@@ -95,11 +67,8 @@ io.on("connection", (socket) => {
       avatarURL,
       equipoReal,
       equipoVisualRival,
-      grupo,
-      roomId
+      grupo
     };
-
-    socket.join(roomId);
 
     console.log("🧩 Mesa creada:");
     console.log("👤 ID:", jugadorID);
@@ -108,14 +77,13 @@ io.on("connection", (socket) => {
     console.log("🇲🇽 Equipo Real:", equipoReal);
     console.log("🏴 Equipo Visual Rival:", equipoVisualRival);
     console.log("🧵 Grupo:", grupo);
-    console.log("🚪 Room:", roomId);
 
     socket.broadcast.emit("mesaDisponible", { duenoMesa: jugadorID });
   });
 
   // 🔗 Unirse a una mesa
   socket.on("unirseAMesa", (data) => {
-    const { jugadorID, duenoMesa } = data || {};
+    const { jugadorID, duenoMesa } = data;
     const mesa = mesasDisponibles[duenoMesa];
 
     if (!mesa) {
@@ -127,36 +95,27 @@ io.on("connection", (socket) => {
     const socketDueno = io.sockets.sockets.get(socketIdDueno);
 
     if (socketDueno) {
-      const roomId = mesa.roomId || getRoomId(duenoMesa);
-
-      socket.join(roomId);
-
       console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
-      console.log(`🚪 Sala usada: ${roomId}`);
 
-      // Invitado
+      // Enviar datos a ambos jugadores
       socket.emit("juegoListo", {
         rival: duenoMesa,
         nombre: mesa.nombre,
         avatarURL: mesa.avatarURL,
         equipo: mesa.equipoReal,
-        grupo: mesa.grupo,
-        duenoMesa: duenoMesa,
-        roomId: roomId
+        grupo: mesa.grupo
       });
 
-      // Dueño
       socketDueno.emit("juegoListo", {
-        rival: jugadorID,
-        duenoMesa: duenoMesa,
-        roomId: roomId
+        rival: jugadorID
       });
 
+      // Eliminar la mesa después de que se une el rival
       delete mesasDisponibles[duenoMesa];
     }
   });
 
-  // 🎯 Evento personalizado
+  // 🎯 Evento personalizado genérico (si se requiere)
   socket.on("evento", (data) => {
     if (!data || typeof data !== "object") {
       console.log("⚠️ Evento inválido:", data);
@@ -164,14 +123,7 @@ io.on("connection", (socket) => {
     }
 
     console.log("🎯 Evento personalizado recibido:", data);
-
-    if (!data.duenoMesa) {
-      console.log("⚠️ evento sin duenoMesa:", data);
-      return;
-    }
-
-    const roomId = getRoomId(data.duenoMesa);
-    socket.to(roomId).emit("evento", data);
+    socket.broadcast.emit("evento", data);
   });
 
   // ❌ Desconexión
@@ -188,9 +140,9 @@ io.on("connection", (socket) => {
   });
 });
 
+// ✅ usa el puerto que Railway te da
 const PORT = process.env.PORT || 3000;
 
-// 👇 importante para Railway
-server.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, () => {
   console.log("🚀 Servidor WebSocket corriendo en puerto", PORT);
 });
