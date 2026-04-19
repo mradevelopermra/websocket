@@ -13,13 +13,13 @@ const io = socketIO(server, {
 
 // ✅ Estado visible desde navegador
 app.get("/", (req, res) => {
-  res.send("✅ Servidor WebSocket activo");
+  res.status(200).send("✅ Servidor WebSocket activo");
 });
 
-// 🗂️ Mesas disponibles
+// 🗂️ Almacenar todas las mesas disponibles con datos
 const mesasDisponibles = {};
 
-// 🧩 Helper para nombre de sala
+// helper simple de sala
 function getRoomId(duenoMesa) {
   return `mesa_${duenoMesa}`;
 }
@@ -37,7 +37,7 @@ io.on("connection", (socket) => {
     console.log("🎮 Jugada recibida:", data);
 
     if (!data || !data.duenoMesa) {
-      console.log("⚠️ jugada sin duenoMesa:", data);
+      console.log("⚠️ jugada sin duenoMesa");
       return;
     }
 
@@ -50,7 +50,7 @@ io.on("connection", (socket) => {
     console.log("⚽ Movimiento del balón:", data);
 
     if (!data || !data.duenoMesa) {
-      console.log("⚠️ ballMove sin duenoMesa:", data);
+      console.log("⚠️ ballMove sin duenoMesa");
       return;
     }
 
@@ -63,7 +63,7 @@ io.on("connection", (socket) => {
     console.log("💥 Evento patearBalon recibido:", data);
 
     if (!data || !data.duenoMesa) {
-      console.log("⚠️ patearBalon sin duenoMesa:", data);
+      console.log("⚠️ patearBalon sin duenoMesa");
       return;
     }
 
@@ -99,7 +99,6 @@ io.on("connection", (socket) => {
       roomId
     };
 
-    // ✅ El dueño entra a su sala
     socket.join(roomId);
 
     console.log("🧩 Mesa creada:");
@@ -111,14 +110,12 @@ io.on("connection", (socket) => {
     console.log("🧵 Grupo:", grupo);
     console.log("🚪 Room:", roomId);
 
-    socket.broadcast.emit("mesaDisponible", {
-      duenoMesa: jugadorID
-    });
+    socket.broadcast.emit("mesaDisponible", { duenoMesa: jugadorID });
   });
 
   // 🔗 Unirse a una mesa
   socket.on("unirseAMesa", (data) => {
-    const { jugadorID, duenoMesa, nombre, avatarURL } = data || {};
+    const { jugadorID, duenoMesa } = data || {};
     const mesa = mesasDisponibles[duenoMesa];
 
     if (!mesa) {
@@ -129,41 +126,34 @@ io.on("connection", (socket) => {
     const socketIdDueno = mesa.socketId;
     const socketDueno = io.sockets.sockets.get(socketIdDueno);
 
-    if (!socketDueno) {
-      console.log(`❗ Socket del dueño no encontrado para ${duenoMesa}`);
-      return;
+    if (socketDueno) {
+      const roomId = mesa.roomId || getRoomId(duenoMesa);
+
+      socket.join(roomId);
+
+      console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
+      console.log(`🚪 Sala usada: ${roomId}`);
+
+      // Invitado
+      socket.emit("juegoListo", {
+        rival: duenoMesa,
+        nombre: mesa.nombre,
+        avatarURL: mesa.avatarURL,
+        equipo: mesa.equipoReal,
+        grupo: mesa.grupo,
+        duenoMesa: duenoMesa,
+        roomId: roomId
+      });
+
+      // Dueño
+      socketDueno.emit("juegoListo", {
+        rival: jugadorID,
+        duenoMesa: duenoMesa,
+        roomId: roomId
+      });
+
+      delete mesasDisponibles[duenoMesa];
     }
-
-    const roomId = mesa.roomId || getRoomId(duenoMesa);
-
-    // ✅ El invitado entra a la misma sala
-    socket.join(roomId);
-
-    console.log(`🎮 ${jugadorID} se unió a la mesa de ${duenoMesa}`);
-    console.log(`🚪 Ambos jugadores en sala: ${roomId}`);
-
-    // ✅ Enviar datos completos al invitado
-    socket.emit("juegoListo", {
-      rival: duenoMesa,
-      nombre: mesa.nombre,
-      avatarURL: mesa.avatarURL,
-      equipo: mesa.equipoReal,
-      grupo: mesa.grupo,
-      duenoMesa: duenoMesa,
-      roomId: roomId
-    });
-
-    // ✅ Enviar más datos también al dueño
-    socketDueno.emit("juegoListo", {
-      rival: jugadorID,
-      nombre: nombre || "",
-      avatarURL: avatarURL || "",
-      duenoMesa: duenoMesa,
-      roomId: roomId
-    });
-
-    // Eliminar la mesa después de que se une el rival
-    delete mesasDisponibles[duenoMesa];
   });
 
   // 🎯 Evento personalizado
@@ -200,6 +190,7 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3000;
 
-server.listen(PORT, () => {
+// 👇 importante para Railway
+server.listen(PORT, "0.0.0.0", () => {
   console.log("🚀 Servidor WebSocket corriendo en puerto", PORT);
 });
